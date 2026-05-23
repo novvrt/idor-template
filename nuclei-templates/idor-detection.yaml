@@ -19,6 +19,7 @@ variables:
   user_id_2: "2"
   product_id_1: "100"
   product_id_2: "101"
+  auth_token: "test-token"
 
 requests:
   # Test 1: IDOR in User Profile Endpoint
@@ -26,7 +27,6 @@ requests:
       - |
         GET /api/users/{{user_id_1}}/profile HTTP/1.1
         Host: {{Hostname}}
-        Authorization: Bearer {{auth_token}}
         Accept: application/json
     
     matchers:
@@ -40,7 +40,7 @@ requests:
           - "user"
           - "id"
           - "email"
-        condition: and
+        condition: or
     
     extractors:
       - type: regex
@@ -54,27 +54,18 @@ requests:
       - |
         GET /api/orders/{{product_id_1}} HTTP/1.1
         Host: {{Hostname}}
-        Authorization: Bearer {{auth_token}}
         Accept: application/json
     
     matchers:
       - type: status
         status:
           - 200
-      
-      - type: word
-        part: body
-        words:
-          - "order"
-          - "product"
-          - "price"
 
   # Test 3: IDOR via Direct ID Manipulation in Path
   - raw:
       - |
         GET /api/v1/documents/{{user_id_1}}/download HTTP/1.1
         Host: {{Hostname}}
-        Authorization: Bearer {{auth_token}}
         Accept: application/json
     
     matchers-condition: or
@@ -83,40 +74,24 @@ requests:
         status:
           - 200
           - 206
-      
-      - type: word
-        part: headers
-        words:
-          - "Content-Disposition"
-          - "application/pdf"
-          - "application/zip"
 
   # Test 4: IDOR in Query Parameters
   - raw:
       - |
         GET /api/user-data?user_id={{user_id_1}}&type=profile HTTP/1.1
         Host: {{Hostname}}
-        Authorization: Bearer {{auth_token}}
         Accept: application/json
     
     matchers:
       - type: status
         status:
           - 200
-      
-      - type: word
-        part: body
-        words:
-          - "success"
-          - "true"
-        negative: false
 
   # Test 5: IDOR in POST Request Body
   - raw:
       - |
         POST /api/get-invoice HTTP/1.1
         Host: {{Hostname}}
-        Authorization: Bearer {{auth_token}}
         Content-Type: application/json
         
         {
@@ -128,82 +103,43 @@ requests:
       - type: status
         status:
           - 200
-      
-      - type: word
-        part: body
-        words:
-          - "invoice"
-          - "amount"
-          - "date"
 
   # Test 6: IDOR in File Upload/Management
   - raw:
       - |
         GET /api/files/{{user_id_1}}/list HTTP/1.1
         Host: {{Hostname}}
-        Authorization: Bearer {{auth_token}}
         Accept: application/json
     
     matchers:
       - type: status
         status:
           - 200
-      
-      - type: regex
-        part: body
-        regex:
-          - '"file(s)?["\']?\s*:\s*\['
+
+  # Test 7: IDOR dengan Numeric ID Sequential
+  - raw:
+      - |
+        GET /api/profile/1 HTTP/1.1
+        Host: {{Hostname}}
+        Accept: application/json
+
+  - raw:
+      - |
+        GET /api/profile/2 HTTP/1.1
+        Host: {{Hostname}}
+        Accept: application/json
+
+  - raw:
+      - |
+        GET /api/profile/999 HTTP/1.1
+        Host: {{Hostname}}
+        Accept: application/json
     
-    extractors:
-      - type: regex
-        part: body
-        regex:
-          - '"file_id":"?([0-9a-f-]+)"?'
-        name: file_id
-
----
-
-id: idor-parameter-comparison
-info:
-  name: IDOR - Parameter Comparison Test
-  author: Security Research Team
-  severity: high
-  description: |
-    Tests IDOR by attempting to access resources of different users
-    by modifying numeric IDs in parameters.
-  tags:
-    - idor
-    - access-control
-
-requests:
-  - raw:
-      - |
-        GET /api/users/1/details HTTP/1.1
-        Host: {{Hostname}}
-        Authorization: Bearer {{auth_token}}
-        Accept: application/json
-
-  - raw:
-      - |
-        GET /api/users/2/details HTTP/1.1
-        Host: {{Hostname}}
-        Authorization: Bearer {{auth_token}}
-        Accept: application/json
-
-  - raw:
-      - |
-        GET /api/users/999/details HTTP/1.1
-        Host: {{Hostname}}
-        Authorization: Bearer {{auth_token}}
-        Accept: application/json
-
-matchers:
-  - type: status
-    status:
-      - 200
-    condition: all
-
-matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+        condition: all
 
 ---
 
@@ -224,22 +160,19 @@ requests:
       - |
         GET /api/v1/resources/00000000-0000-0000-0000-000000000001 HTTP/1.1
         Host: {{Hostname}}
-        Authorization: Bearer {{auth_token}}
         Accept: application/json
 
   - raw:
       - |
         GET /api/v1/resources/00000000-0000-0000-0000-000000000002 HTTP/1.1
         Host: {{Hostname}}
-        Authorization: Bearer {{auth_token}}
         Accept: application/json
 
 matchers:
   - type: status
     status:
       - 200
-      - 403
-      - 404
+      - 206
     condition: or
 
 extractors:
@@ -251,7 +184,7 @@ extractors:
 
 ---
 
-id: idor-response-comparison
+id: idor-response-differentiation
 info:
   name: IDOR - Response Differentiation
   author: Security Research Team
@@ -267,12 +200,12 @@ info:
 requests:
   - raw:
       - |
-        GET /api/profile/{{user_id_1}} HTTP/1.1
+        GET /api/profile/1 HTTP/1.1
         Host: {{Hostname}}
         User-Agent: Mozilla/5.0
         Accept: application/json
       - |
-        GET /api/profile/{{user_id_2}} HTTP/1.1
+        GET /api/profile/2 HTTP/1.1
         Host: {{Hostname}}
         User-Agent: Mozilla/5.0
         Accept: application/json
@@ -281,8 +214,7 @@ matchers:
   - type: status
     status:
       - 200
-
-matchers-condition: and
+    condition: all
 
 extractors:
   - type: regex
@@ -293,3 +225,299 @@ extractors:
       - '"name":"([^"]+)"'
       - '"username":"([^"]+)"'
     name: user_info
+
+---
+
+id: idor-api-enumeration
+info:
+  name: IDOR - Common API Endpoint Enumeration
+  author: Security Research Team
+  severity: high
+  description: |
+    Tests common IDOR vulnerable endpoints dengan berbagai parameter formats.
+  tags:
+    - idor
+    - api
+    - enumeration
+
+requests:
+  # Test endpoint /users/ID
+  - raw:
+      - |
+        GET /users/1 HTTP/1.1
+        Host: {{Hostname}}
+        Accept: application/json
+
+  # Test endpoint /api/user/ID
+  - raw:
+      - |
+        GET /api/user/1 HTTP/1.1
+        Host: {{Hostname}}
+        Accept: application/json
+
+  # Test endpoint /api/accounts/ID
+  - raw:
+      - |
+        GET /api/accounts/1 HTTP/1.1
+        Host: {{Hostname}}
+        Accept: application/json
+
+  # Test endpoint /api/profile/ID/details
+  - raw:
+      - |
+        GET /api/profile/1/details HTTP/1.1
+        Host: {{Hostname}}
+        Accept: application/json
+
+  # Test endpoint /api/user?id=1
+  - raw:
+      - |
+        GET /api/user?id=1 HTTP/1.1
+        Host: {{Hostname}}
+        Accept: application/json
+
+  # Test endpoint /data/1
+  - raw:
+      - |
+        GET /data/1 HTTP/1.1
+        Host: {{Hostname}}
+        Accept: application/json
+
+  # Test endpoint /resource/ID
+  - raw:
+      - |
+        GET /resource/1 HTTP/1.1
+        Host: {{Hostname}}
+        Accept: application/json
+
+matchers:
+  - type: status
+    status:
+      - 200
+      - 202
+      - 206
+
+---
+
+id: idor-header-manipulation
+info:
+  name: IDOR - Header Manipulation Test
+  author: Security Research Team
+  severity: high
+  description: |
+    Tests IDOR vulnerabilities yang mungkin dapat dibypass menggunakan
+    header manipulation atau user context override.
+  tags:
+    - idor
+    - header-bypass
+
+requests:
+  # Test dengan X-User-ID header
+  - raw:
+      - |
+        GET /api/profile HTTP/1.1
+        Host: {{Hostname}}
+        X-User-ID: 1
+        Accept: application/json
+
+  # Test dengan User-Id header
+  - raw:
+      - |
+        GET /api/profile HTTP/1.1
+        Host: {{Hostname}}
+        User-Id: 2
+        Accept: application/json
+
+  # Test dengan Authorization + specific user header
+  - raw:
+      - |
+        GET /api/user-profile HTTP/1.1
+        Host: {{Hostname}}
+        X-Forwarded-User: 1
+        Accept: application/json
+
+  # Test dengan X-Original-User header
+  - raw:
+      - |
+        GET /api/account HTTP/1.1
+        Host: {{Hostname}}
+        X-Original-User: admin
+        Accept: application/json
+
+matchers:
+  - type: status
+    status:
+      - 200
+      - 202
+
+---
+
+id: idor-post-request-manipulation
+info:
+  name: IDOR - POST Request Body Manipulation
+  author: Security Research Team
+  severity: high
+  description: |
+    Tests IDOR di POST requests dengan manipulation body parameters.
+  tags:
+    - idor
+    - post-method
+
+requests:
+  # JSON body dengan user_id
+  - raw:
+      - |
+        POST /api/get-data HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: application/json
+        
+        {
+          "user_id": 1
+        }
+
+  # JSON body dengan id field
+  - raw:
+      - |
+        POST /api/fetch HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: application/json
+        
+        {
+          "id": 1
+        }
+
+  # JSON body dengan owner_id
+  - raw:
+      - |
+        POST /api/resource HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: application/json
+        
+        {
+          "owner_id": 1,
+          "action": "view"
+        }
+
+  # Form-encoded body
+  - raw:
+      - |
+        POST /data/retrieve HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: application/x-www-form-urlencoded
+        
+        user_id=1&type=profile
+
+matchers:
+  - type: status
+    status:
+      - 200
+      - 201
+
+---
+
+id: idor-path-traversal-combination
+info:
+  name: IDOR - Path Traversal Combination
+  author: Security Research Team
+  severity: high
+  description: |
+    Tests IDOR combined dengan path traversal attempts.
+  tags:
+    - idor
+    - path-traversal
+
+requests:
+  # Standard IDOR test
+  - raw:
+      - |
+        GET /api/users/1/files HTTP/1.1
+        Host: {{Hostname}}
+        Accept: application/json
+
+  # Path traversal attempt
+  - raw:
+      - |
+        GET /api/users/1/../2/files HTTP/1.1
+        Host: {{Hostname}}
+        Accept: application/json
+
+  # Double encoding
+  - raw:
+      - |
+        GET /api/users/1%252f..%252f2/files HTTP/1.1
+        Host: {{Hostname}}
+        Accept: application/json
+
+  # Case variation
+  - raw:
+      - |
+        GET /API/USERS/1/FILES HTTP/1.1
+        Host: {{Hostname}}
+        Accept: application/json
+
+matchers:
+  - type: status
+    status:
+      - 200
+      - 202
+
+---
+
+id: idor-horizontal-privilege-escalation
+info:
+  name: IDOR - Horizontal Privilege Escalation
+  author: Security Research Team
+  severity: high
+  description: |
+    Tests horizontal privilege escalation melalui IDOR.
+    Mencoba mengakses resource user lain pada level yang sama.
+  tags:
+    - idor
+    - privilege-escalation
+
+requests:
+  # Test access ke user profile yang berbeda
+  - raw:
+      - |
+        GET /api/profile/admin HTTP/1.1
+        Host: {{Hostname}}
+        Accept: application/json
+
+  - raw:
+      - |
+        GET /api/profile/root HTTP/1.1
+        Host: {{Hostname}}
+        Accept: application/json
+
+  - raw:
+      - |
+        GET /api/profile/test HTTP/1.1
+        Host: {{Hostname}}
+        Accept: application/json
+
+  # Test numeric ID enumeration
+  - raw:
+      - |
+        GET /api/users/0 HTTP/1.1
+        Host: {{Hostname}}
+        Accept: application/json
+
+  - raw:
+      - |
+        GET /api/users/1 HTTP/1.1
+        Host: {{Hostname}}
+        Accept: application/json
+
+  - raw:
+      - |
+        GET /api/users/999999 HTTP/1.1
+        Host: {{Hostname}}
+        Accept: application/json
+
+matchers:
+  - type: status
+    status:
+      - 200
+      - 202
+      - 206
+    condition: or
