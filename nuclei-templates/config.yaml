@@ -1,0 +1,25 @@
+# Nuclei IDOR Detection - Configuration File
+
+# Target configuration
+targets:
+  - "https://api.example.com"
+  - "https://api2.example.com"
+
+# Headers to include in requests
+headers:
+  User-Agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+  Accept: "application/json"
+  # Uncomment and fill your auth token
+  # Authorization: "Bearer YOUR_AUTH_TOKEN"
+
+# Proxy configuration (optional)
+# proxy: "http://127.0.0.1:8080"
+
+# Timeout settings
+timeout: 10
+retries: 1
+
+# Output settings
+output:
+  format: "json"  # json, sarif, html
+  file: "idor-results.json"
